@@ -1,0 +1,46 @@
+version: '3.7'
+networks:
+  meet-network:
+    driver: bridge
+
+services:
+  transmission_bd:
+    image: cassandra:3.11.9
+    ports:
+    - 9042:9042
+    restart: always
+    environment:
+      MAX_HEAP_SIZE: 256M
+      HEAP_NEWSIZE: 128M
+    networks:
+      - meet-network
+
+  transmission_ms:
+    image: ms_trx
+    ports:
+    - 8000:8000
+    restart: always
+    environment:
+      CASS_URL: "transmission_bd:9042"
+      CASS_DB: transmission
+      CASS_PASS: passwordSeguro
+      CASS_USR: userSeguro
+      PORT: 8000
+    networks:
+      - meet-network
+
+  transmission_nw:
+    image: praqma/network-multitool:extra
+    networks:
+      - meet-network
+
+  transmission_bd_gui:
+    image: metavige/cassandra-web
+    ports:
+    - 8500:3000
+    environment:
+      CASSANDRA_HOST: "172.18.0.3"
+      CASSANDRA_USER: userSeguro
+      CASSANDRA_PASSWORD: passwordSeguro
+    networks:
+      - meet-network
