@@ -1,6 +1,7 @@
 package core
 
-type ClientSerializer interface {
-	Decode(input []byte) (*Client, error)
+type DataSerializer interface {
+	DecodeClient(input []byte) (*Client, error)
+	DecodeBroadcast(input []byte) (*Broadcast, error)
 	Encode(input interface{}) ([]byte, error)
 }

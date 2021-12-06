@@ -7,18 +7,18 @@ import (
 	"net/http"
 	"github.com/go-chi/chi"
 	"mime/multipart"
-    "strconv"
 	"bytes"
 	js "ms/transmission/serializer/json"
 	"ms/transmission/core"
 )
 
 type ClientHandler interface {
-	DeleteSession(http.ResponseWriter, *http.Request)
-	PostSession(http.ResponseWriter, *http.Request)
-	PutAudio(http.ResponseWriter, *http.Request)
-	PutImage(http.ResponseWriter, *http.Request)
 	GetSession(http.ResponseWriter, *http.Request)
+	PostSession(http.ResponseWriter, *http.Request)
+	PutSession(http.ResponseWriter, *http.Request)
+	DeleteSession(http.ResponseWriter, *http.Request)
+	PostAudio(http.ResponseWriter, *http.Request)
+	PostImage(http.ResponseWriter, *http.Request)
 }
 
 type handler struct {
@@ -38,15 +38,15 @@ func setupResponse(writer http.ResponseWriter, contentType string, body []byte, 
 	}
 }
 
-func (handler *handler) serializer(contentType string) core.ClientSerializer {
-	return &js.Client{}
+func (handler *handler) serializer(contentType string) core.DataSerializer {
+	return js.NewSerializer()
 }
 
 func (handler *handler) GetSession(writer http.ResponseWriter, req *http.Request) {
 	log.Println("INFO", "GetSession START")
-	idMeeting := chi.URLParam(req, "idMeeting")
+	token := chi.URLParam(req, "token")
 	contentType := "application/json"
-	client, err := handler.service.List(idMeeting)
+	client, err := handler.service.List(token)
 	if err != nil {
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -69,13 +69,13 @@ func (handler *handler) PostSession(writer http.ResponseWriter, req *http.Reques
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	client, err := handler.serializer(contentType).Decode(requestBody)
+	client, err := handler.serializer(contentType).DecodeClient(requestBody)
 	if err != nil {
 		log.Println("ERROR", "Error deserializando body")
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	err = handler.service.Store(client)
+	client, err = handler.service.Store(client)
 	if err != nil {
 		log.Println("ERROR", "Error almacenando entidad")
 		log.Println("ERROR", err)
@@ -88,32 +88,62 @@ func (handler *handler) PostSession(writer http.ResponseWriter, req *http.Reques
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	log.Println("INFO", "PostSession START")
+	log.Println("INFO", "PostSession FINISH")
+	setupResponse(writer, contentType, responseBody, http.StatusCreated)
+}
+
+func (handler *handler) PutSession(writer http.ResponseWriter, req *http.Request) {
+	log.Println("INFO", "PutSession START")
+	contentType := req.Header.Get("Content-Type")
+	requestBody, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		log.Println("ERROR", "Error leyendo body")
+		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	client, err := handler.serializer(contentType).DecodeClient(requestBody)
+	if err != nil {
+		log.Println("ERROR", "Error deserializando body")
+		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	err = handler.service.Update(client.Token, client.IdSession, nil)
+	if err != nil {
+		log.Println("ERROR", "Error actualizando entidad")
+		log.Println("ERROR", err)
+		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	responseBody, err := handler.serializer(contentType).Encode(client)
+	if err != nil {
+		log.Println("ERROR", "Error serializando body")
+		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	log.Println("INFO", "PutSession FINISH")
 	setupResponse(writer, contentType, responseBody, http.StatusCreated)
 }
 
 func (handler *handler) DeleteSession(writer http.ResponseWriter, req *http.Request) {
 	log.Println("INFO", "DeleteSession START")
-	idSession := chi.URLParam(req, "idSession")
-	idMeeting := chi.URLParam(req, "idMeeting")
-	log.Println("DEBUG", idSession, idMeeting)
-	err := handler.service.Delete(idMeeting, idSession)
+	token := chi.URLParam(req, "token")
+	err := handler.service.Delete(token)
 	if err != nil {
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	log.Println("INFO", "DeleteSession START")
+	log.Println("INFO", "DeleteSession FINISH")
 	writer.WriteHeader(http.StatusAccepted)
 }
 
-func (handler *handler) PutAudio(writer http.ResponseWriter, req *http.Request) {
+func (handler *handler) PostAudio(writer http.ResponseWriter, req *http.Request) {
 	contentType := req.Header.Get("Content-Type")
 	requestBody, err := req.MultipartReader()
 	if err != nil {
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	client := new(core.Client)
+	broadcast := new(core.Broadcast)
 	for {
 		part, err := requestBody.NextPart()
 
@@ -121,25 +151,23 @@ func (handler *handler) PutAudio(writer http.ResponseWriter, req *http.Request) 
 			break
 		}
 		switch part.FormName() {
-		case "idmeeting":
-			client.IdMeeting = string(readPart(part))
-		case "idsession":
-			client.IdSession, _ = strconv.Atoi(string(readPart(part)))
+		case "token":
+			broadcast.Token = string(readPart(part))
 		case "data":
-			client.Media = readPart(part)
+			broadcast.Media = readPart(part)
 		default:
 			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 		
 	}
-	broadcast, err := handler.service.Audio(client)
+	res, err := handler.service.Audio(broadcast)
 	if err != nil {
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	log.Println("DEBUG", "data", broadcast)
-	responseBody, err := handler.serializer(contentType).Encode(broadcast)
+	log.Println("DEBUG", "data", res)
+	responseBody, err := handler.serializer(contentType).Encode(res)
 	if err != nil {
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
@@ -147,24 +175,38 @@ func (handler *handler) PutAudio(writer http.ResponseWriter, req *http.Request) 
 	setupResponse(writer, contentType, responseBody, http.StatusCreated)
 }
 
-func (handler *handler) PutImage(writer http.ResponseWriter, req *http.Request) {
+func (handler *handler) PostImage(writer http.ResponseWriter, req *http.Request) {
 	contentType := req.Header.Get("Content-Type")
-	requestBody, err := ioutil.ReadAll(req.Body)
+	requestBody, err := req.MultipartReader()
 	if err != nil {
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	client, err := handler.serializer(contentType).Decode(requestBody)
+	broadcast := new(core.Broadcast)
+	for {
+		part, err := requestBody.NextPart()
+
+		if err == io.EOF {
+			break
+		}
+		switch part.FormName() {
+		case "token":
+			broadcast.Token = string(readPart(part))
+		case "data":
+			broadcast.Media = readPart(part)
+		default:
+			http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		
+	}
+	res, err := handler.service.Image(broadcast)
 	if err != nil {
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	err = handler.service.Store(client)
-	if err != nil {
-		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	responseBody, err := handler.serializer(contentType).Encode(client)
+	log.Println("DEBUG", "data", res)
+	responseBody, err := handler.serializer(contentType).Encode(res)
 	if err != nil {
 		http.Error(writer, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

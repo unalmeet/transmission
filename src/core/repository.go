@@ -1,7 +1,9 @@
 package core
 
 type ClientRepository interface {
-	List(IdMeeting string) ([]*Client, error)
 	Store(client *Client) error
-	Delete(IdMeeting, IdSession string) error
+	List(token string) ([]*Client, error)
+	Update(token string, idSession int, media []byte) error
+	Delete(token string) error
+	Validate(token string) bool
 }

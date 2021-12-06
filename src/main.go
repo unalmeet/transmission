@@ -27,11 +27,12 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	r.Get("/api/v1/session/{idMeeting}", handler.GetSession)
+	r.Get("/api/v1/session/{token}", handler.GetSession)
 	r.Post("/api/v1/session", handler.PostSession)
-	r.Delete("/api/v1/session/{idMeeting}/{idSession}", handler.DeleteSession)
-	r.Put("/api/v1/image", handler.PutImage)
-	r.Put("/api/v1/sound", handler.PutAudio)
+	r.Delete("/api/v1/session/{token}", handler.DeleteSession)
+	r.Put("/api/v1/session", handler.PutSession)
+	r.Post("/api/v1/image", handler.PostImage)
+	r.Post("/api/v1/sound", handler.PostAudio)
 
 	errs := make(chan error, 2)
 	go func() {

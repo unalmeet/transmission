@@ -5,6 +5,9 @@ import (
 	"log"
 	errs "github.com/pkg/errors"
 	"gopkg.in/dealancer/validate.v2"
+    "crypto/md5"
+    "encoding/hex"
+    "strconv"
 )
 
 var (
@@ -22,54 +25,64 @@ func NewRedirectService(clientRepo ClientRepository) ClientService {
 	}
 }
 
-func (service *clientService) List(IdMeeting string) ([]*Client, error) {
-	return service.repository.List(IdMeeting)
+func (service *clientService) List(token string) ([]*Client, error) {
+	return service.repository.List(token)
 }
 
-func (service *clientService) Store(client *Client) error {
+func (service *clientService) Update(token string, idSession int, media []byte) error {
+	return service.repository.Update(token, idSession, media)
+}
+
+func (service *clientService) Validate(token string) (bool, error) {
+	return service.repository.Validate(token), nil
+}
+
+func (service *clientService) Store(client *Client) (*Client, error) {
 	if err := validate.Validate(client)
 	err != nil {
 		log.Println("ERROR", "Error en Service Store", err)
-		return errs.Wrap(ErrClientInvalid, "service.Store")
+		return nil, errs.Wrap(ErrClientInvalid, "service.Store")
 	}
-	return service.repository.Store(client)
+	hasher := md5.New()
+    hasher.Write([]byte(client.IdMeeting + strconv.Itoa(client.IdUser)))
+	client.Token = hex.EncodeToString(hasher.Sum(nil))
+	err := service.repository.Store(client)
+	if err != nil {
+		log.Println("ERROR", "Error en Service Store", err)
+		return nil, errs.Wrap(err, "service.Store")
+	}
+	return client, nil
 }
 
-func (service *clientService) Delete(IdMeeting, IdSession string) error {
-	return service.repository.Delete(IdMeeting, IdSession)
+func (service *clientService) Delete(token string) error {
+	return service.repository.Delete(token)
 }
 
-func (service *clientService) Audio(client *Client) (*Broadcast, error) {
-	var broadcast = new(Broadcast)
-	clients, err := service.repository.List(client.IdMeeting)
+func (service *clientService) Audio(broadcast *Broadcast) (*Broadcast, error) {
+	clients, err := service.repository.List(broadcast.Token)
 	if err != nil {
 		log.Println("ERROR", "Error en Service Audio", err)
 		return nil, errs.Wrap(ErrClientInvalid, "service.Audio")
 	}
 	for _, element := range clients {
-		if client.IdSession != element.IdSession{
+		if broadcast.Token != element.Token{
 			broadcast.IdSession = append(broadcast.IdSession, element.IdSession)
 		}
 	}
-	broadcast.IdMeeting = client.IdMeeting
-	broadcast.Media = client.Media
 	return broadcast, nil
 }
 
-func (service *clientService) Image(client *Client) (*Broadcast, error) {
-	var broadcast = new(Broadcast)
+func (service *clientService) Image(broadcast *Broadcast) (*Broadcast, error) {
 	var images [][]byte
-	clients, err := service.repository.List(client.IdMeeting)
+	clients, err := service.repository.List(broadcast.Token)
 	if err != nil {
 		log.Println("ERROR", "Error en Service Audio", err)
 		return nil, errs.Wrap(ErrClientInvalid, "service.Audio")
 	}
 	for _, element := range clients {
 		broadcast.IdSession = append(broadcast.IdSession, element.IdSession)
-		images = append(images, client.Media)
+		images = append(images, element.Media)
 	}
-	broadcast.IdMeeting = client.IdMeeting
-	//process media
-	broadcast.Media = client.Media
+	// change broadcast.media for processed image
 	return broadcast, nil
 }

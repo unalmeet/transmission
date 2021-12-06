@@ -1,9 +1,11 @@
 package core
 
 type ClientService interface {
-	List(IdMeeting string) ([]*Client, error)
-	Store(client *Client) error
-	Delete(IdMeeting, IdSession string) error
-	Audio(client *Client) (*Broadcast, error)
-	Image(client *Client) (*Broadcast, error)
+	Store(client *Client) (*Client, error)
+	List(token string) ([]*Client, error)
+	Update(token string, idSession int, media []byte) error
+	Delete(token string) error
+	Validate(token string) (bool, error)
+	Audio(broadcast *Broadcast) (*Broadcast, error)
+	Image(broadcast *Broadcast) (*Broadcast, error)
 }
